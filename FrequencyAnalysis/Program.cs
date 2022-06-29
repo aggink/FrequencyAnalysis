@@ -1,14 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Text.RegularExpressions;
 
 namespace FrequencyAnalysisText;
-
-public class Record
-{
-    public string Triplet = null!;
-    public long Count;
-}
 
 public class Program
 {
@@ -23,50 +16,47 @@ public class Program
         _timer.Start();
 
         var triplets = ExecuteAnalysis();
-        var result = triplets.OrderByDescending(x => x.Count).Take(10);
+        var result = triplets.OrderByDescending(x => x.Value).Take(10);
 
         _timer.Stop();
 
         foreach (var value in result)
-            Console.WriteLine($"{value.Triplet} - {value.Count}");
+            Console.WriteLine($"{value.Key} - {value.Value}");
         Console.WriteLine($"Время: {_timer.ElapsedMilliseconds} мс");
     }
 
-    public static ConcurrentBag<Record> ExecuteAnalysis()
+    public static ConcurrentDictionary<string, int> ExecuteAnalysis()
     {
-        // Заменяем все символы кроме букв пробелами и все переводим в нижний регистор
-        var text = Regex.Replace(ReadTextFile(_path!), @"[^A-zА-я]+", " ").ToLower();
+        ConcurrentDictionary<string, int> triplets = new();
 
-        // Создаем список слов
-        var words = text.Split(" ", StringSplitOptions.RemoveEmptyEntries)
-            .Where(word => word.Length >= 3)
-            .ToList();
-
-        // Разбиваем слова на триплеты и подсчитываем их количество
-        ConcurrentBag<Record> triplets = new();
-        if (!words.Any()) return triplets;
-
-        Parallel.For(0, words.Count, i =>
+        Parallel.ForEach(ReadTextFile(_path!), line =>
         {
-            for (int j = 0; j <= words[i].Length - 3; j++)
+            List<char> triplet = new();
+            foreach (char c in line)
             {
-                var newTriplet = words[i].Substring(j, 3);
+                if (!char.IsLetter(c))
+                {
+                    triplet.Clear();
+                    continue;
+                }
 
-                var result = triplets.FirstOrDefault(x => x.Triplet == newTriplet);
-                if (result == null)
-                    triplets.Add(new Record { Triplet = newTriplet, Count = 1 });
-                else
-                    result.Count += 1;
+                triplet.Add(c);
+
+                if (triplet.Count == 3)
+                {
+                    triplets.AddOrUpdate(new string(triplet.ToArray()), 1, (triplet, count) => count = count + 1);
+                    triplet.RemoveAt(0);
+                }
             }
         });
 
         return triplets;
     }
 
-    public static string ReadTextFile(string path)
+    public static string[] ReadTextFile(string path)
     {
         if (!File.Exists(path)) throw new FileNotFoundException();
-        return File.ReadAllText(path);
+        return File.ReadAllLines(path);
     }
 
     public static void ReadPathConsole()
